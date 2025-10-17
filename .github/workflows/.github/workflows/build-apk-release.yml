@@ -1,0 +1,52 @@
+name: Build Android APK (release, signed)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Decode keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > release.keystore
+          chmod 600 release.keystore
+
+      - name: Inject signing settings
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          sed -i "s|android.release_keystore = .*|android.release_keystore = ${KEYSTORE_PATH}|" buildozer.spec
+          sed -i "s|android.release_keystore_password = .*|android.release_keystore_password = ${KEYSTORE_PASSWORD}|" buildozer.spec
+          sed -i "s|android.release_keyalias = .*|android.release_keyalias = ${KEY_ALIAS}|" buildozer.spec
+          sed -i "s|android.release_keyalias_password = .*|android.release_keyalias_password = ${KEY_PASSWORD}|" buildozer.spec
+
+      - name: Build release APK
+        run: |
+          docker run --rm \
+            -e CI=true \
+            -v "${{ github.workspace }}":/home/user/hostcwd \
+            -w /home/user/hostcwd \
+            kivy/buildozer:latest \
+            buildozer -v android release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-release
+          path: |
+            bin/*.apk
+            ./.buildozer/outputs/**/*.apk
+            ./.buildozer/android/platform/build/dists/**/*.apk
+          retention-days: 7
