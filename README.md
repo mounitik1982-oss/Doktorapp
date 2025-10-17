@@ -1,2 +1,0 @@
-# Doktorapp
-Demo for Users
